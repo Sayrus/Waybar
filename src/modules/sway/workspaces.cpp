@@ -8,19 +8,6 @@
 
 namespace waybar::modules::sway {
 
-// Helper function to escape quotes and backslashes in workspace names for IPC commands
-std::string escapeWorkspaceName(const std::string& name) {
-  std::string escaped;
-  escaped.reserve(name.size());
-  for (char c : name) {
-    if (c == '"' || c == '\\') {
-      escaped += '\\';
-    }
-    escaped += c;
-  }
-  return escaped;
-}
-
 // Helper function to assign a number to a workspace, just like sway. In fact
 // this is taken quite verbatim from `sway/ipc-json.c`.
 int Workspaces::convertWorkspaceNameToNum(std::string name) {
@@ -377,19 +364,23 @@ Gtk::Button &Workspaces::addButton(const Json::Value &node) {
     button.signal_pressed().connect([this, node] {
       try {
         if (node["target_output"].isString()) {
-          std::string escapedName = escapeWorkspaceName(node["name"].asString());
-          std::string escapedOutput = escapeWorkspaceName(node["target_output"].asString());
           ipc_.sendCmd(IPC_COMMAND,
                        fmt::format(persistent_workspace_switch_cmd_, "--no-auto-back-and-forth",
-                                   escapedName, escapedOutput,
-                                   "--no-auto-back-and-forth", escapedName));
+                                   node["name"].asString(), node["target_output"].asString(),
+                                   "--no-auto-back-and-forth", node["name"].asString()));
         } else {
-          std::string escapedName = escapeWorkspaceName(node["name"].asString());
-          ipc_.sendCmd(IPC_COMMAND, fmt::format("workspace {} \"{}\"",
-                                                config_["disable-auto-back-and-forth"].asBool()
-                                                    ? "--no-auto-back-and-forth"
-                                                    : "",
-                                                escapedName));
+          std::string workspaceName = node["name"].asString();
+          // If workspace name contains quotes, use --no-quotes flag or number reference
+          // For now, format without the template to avoid quote issues
+          std::string flag = config_["disable-auto-back-and-forth"].asBool()
+                                ? "--no-auto-back-and-forth"
+                                : "";
+          // Use number if available, otherwise use name without extra quotes if it has quotes
+          if (node["num"].asInt() >= 0 && workspaceName.find('"') != std::string::npos) {
+            ipc_.sendCmd(IPC_COMMAND, fmt::format("workspace {} number {}", flag, node["num"].asInt()));
+          } else {
+            ipc_.sendCmd(IPC_COMMAND, fmt::format(workspace_switch_cmd_, flag, workspaceName));
+          }
         }
       } catch (const std::exception &e) {
         spdlog::error("Workspaces: {}", e.what());
@@ -475,8 +466,7 @@ bool Workspaces::handleScroll(GdkEventScroll *e) {
     ipc_.sendCmd(IPC_COMMAND, fmt::format("mouse_warping none"));
   }
   try {
-    std::string escapedName = escapeWorkspaceName(name);
-    ipc_.sendCmd(IPC_COMMAND, fmt::format(workspace_switch_cmd_, "--no-auto-back-and-forth", escapedName));
+    ipc_.sendCmd(IPC_COMMAND, fmt::format(workspace_switch_cmd_, "--no-auto-back-and-forth", name));
   } catch (const std::exception &e) {
     spdlog::error("Workspaces: {}", e.what());
   }
