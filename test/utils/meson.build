@@ -47,6 +47,8 @@ test_src += files(
 )
 
 test_src += files('utf8_string.cpp', '../../src/util/utf8_string.cpp')
+test_src += files('markup.cpp', '../../src/util/markup.cpp')
+test_dep += dependency('pango')
 
 utils_test = executable(
     'utils_test',

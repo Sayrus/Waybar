@@ -199,6 +199,7 @@ src_files = files(
     'src/util/ustring_clen.cpp',
     'src/util/sanitize_str.cpp',
     'src/util/rewrite_string.cpp',
+    'src/util/markup.cpp',
     'src/util/hosts_check.cpp',
     'src/util/gtk_icon.cpp',
     'src/util/icon_loader.cpp',
