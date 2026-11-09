@@ -125,6 +125,64 @@ swaymsg -q '[title="SMOKE-ONE"] kill'
 "${A11Y[@]}" TASK:SMOKE-TWO || fail=1
 "${A11Y[@]}" --absent TASK:SMOKE-ONE || fail=1
 
+# Workspace-name markup on the running bar (disable-markup unset): AT-SPI reads
+# the decoded label, so rendered markup shows the clean name while the escaped
+# fallback would show literal tags.
+swaymsg -q rename workspace SMOKE-WS-C to '<b>SMOKE-WS-B</b>'
+"${A11Y[@]}" WS:SMOKE-WS-B || fail=1
+"${A11Y[@]}" --absent '<b>' || fail=1
+
+# Bare ampersand: rendered as literal text, without tripping Gtk's set-markup
+# fallback warning (launch_waybar resets SMOKE_LOG per launch, so only this
+# bar is covered).
+swaymsg -q rename workspace '<b>SMOKE-WS-B</b>' to "'SMOKE & WS'"
+"${A11Y[@]}" 'WS:SMOKE & WS' || fail=1
+if grep -q 'Failed to set text' "$SMOKE_LOG"; then
+    echo "::error::workspace name fell back to the Gtk markup-error path"
+    smoke::log
+    fail=1
+fi
+
+# {name} renders the part of "N:name" after the first ':' ({value} keeps the
+# prefix), including for names that carry markup.
+swaymsg -q rename workspace "'SMOKE & WS'" to '9:SMOKE-TRIM'
+"${A11Y[@]}" WS:SMOKE-TRIM || fail=1
+"${A11Y[@]}" --absent 'WS:9:' || fail=1
+swaymsg -q rename workspace '9:SMOKE-TRIM' to '7:<b>WS-TRIM</b>'
+"${A11Y[@]}" WS-TRIM || fail=1
+# Absent '<b>': "WS-TRIM" would also match a literal "</b>WS-TRIM</b>" label.
+"${A11Y[@]}" --absent 'WS:7:' '<b>' || fail=1
+
+smoke::assert_clean_exit || fail=1
+cleanup
+echo "::endgroup::"
+
+echo "::group::sway/workspaces with disable-markup"
+export COMPOSITOR=sway
+smoke::setup
+smoke::start_compositor
+# The IPC socket may answer after the compositor's Wayland socket: wait for it.
+for _ in $(seq 1 40); do swaymsg -t get_version >/dev/null 2>&1 && break; sleep 0.25; done
+swaymsg -q workspace SMOKE-WS-A
+cat > "$cfg" <<'EOF'
+{
+  "layer": "top", "position": "top", "height": 30,
+  "modules-left": ["sway/workspaces"],
+  "sway/workspaces": { "format": "WS:{name}", "disable-markup": true }
+}
+EOF
+smoke::launch_waybar "$cfg" "$DIR/style.css" 4
+smoke::assert_alive || fail=1
+
+# Markup names display verbatim on the plain-text path: tags and entities as
+# their own literal text.
+swaymsg -q rename workspace SMOKE-WS-A to '<b>SMOKE-WS-B</b>'
+"${A11Y[@]}" 'WS:<b>SMOKE-WS-B</b>' || fail=1
+# The target needs quotes inside the payload: sway splits the rename target on
+# spaces ("<b>A &gt; B</b>" would rename to "<b>A &gt" and try to run "B</b>").
+swaymsg -q rename workspace '<b>SMOKE-WS-B</b>' to "'<b>A &gt; B</b>'"
+"${A11Y[@]}" 'WS:<b>A &gt; B</b>' || fail=1
+
 smoke::assert_clean_exit || fail=1
 cleanup
 echo "::endgroup::"
