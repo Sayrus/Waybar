@@ -56,6 +56,11 @@ smoke::start_compositor() {
 output HEADLESS-1 resolution ${WIDTH}x${HEIGHT} scale ${SCALE} background #000000 solid_color
 ${SWAY_CONFIG_EXTRA:-}
 EOF
+            # sway honors an inherited SWAYSOCK for its IPC path: without this,
+            # a second compositor in the same shell binds its IPC socket in the
+            # previous (abandoned) XDG_RUNTIME_DIR, and the socket search below
+            # exports an empty SWAYSOCK that swaymsg cannot connect to.
+            unset SWAYSOCK
             sway -c "$cfg" >/tmp/compositor.log 2>&1 &
             COMP_PID=$!
             ;;
